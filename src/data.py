@@ -1,0 +1,58 @@
+# src/data.py
+import os
+import pandas as pd
+from polygon import RESTClient
+
+# Hardcode your Polygon API key here
+HARDCODED_POLYGON_API_KEY = "fDLhW6xHMAEyG9daMWLUQouqrpLV4TVd"
+
+# Example Tickers
+TICKERS = ["AAPL", "TSLA", "SPY"]
+
+# Example start/end dates
+START_DATE = "2023-01-01"
+END_DATE = "2023-12-31"
+TIMEFRAME = "day"
+
+def fetch_historical_data(ticker: str) -> pd.DataFrame:
+    """
+    Fetch daily bar data for a given ticker from Polygon.
+    Returns a DataFrame with columns: [timestamp, open, high, low, close, volume].
+    """
+    # Pass the hardcoded key directly to the RESTClient constructor
+    client = RESTClient(api_key=HARDCODED_POLYGON_API_KEY)
+    
+    all_bars = []
+    bars = client.list_aggs(
+        ticker=ticker,
+        multiplier=1,
+        timespan=TIMEFRAME,  # e.g., "day"
+        from_=START_DATE,
+        to=END_DATE,
+        limit=50000
+    )
+
+    for bar in bars:
+        all_bars.append({
+            "timestamp": pd.to_datetime(bar.timestamp, unit='ms'),
+            "open": bar.open,
+            "high": bar.high,
+            "low": bar.low,
+            "close": bar.close,
+            "volume": bar.volume
+        })
+
+    df = pd.DataFrame(all_bars)
+    df.sort_values("timestamp", inplace=True)
+    df.reset_index(drop=True, inplace=True)
+    return df
+
+def download_all_data(output_dir: str = "data/raw") -> None:
+    """Download historical data for all tickers and save as CSV."""
+    os.makedirs(output_dir, exist_ok=True)
+    
+    for ticker in TICKERS:
+        df = fetch_historical_data(ticker)
+        csv_path = os.path.join(output_dir, f"{ticker}_{START_DATE}_to_{END_DATE}.csv")
+        df.to_csv(csv_path, index=False)
+        print(f"Saved {ticker} data to {csv_path}")
