@@ -2,6 +2,7 @@
 import os
 import pandas as pd
 from polygon import RESTClient
+from datetime import datetime
 
 # Hardcode your Polygon API key here
 HARDCODED_POLYGON_API_KEY = "fDLhW6xHMAEyG9daMWLUQouqrpLV4TVd"
@@ -9,9 +10,10 @@ HARDCODED_POLYGON_API_KEY = "fDLhW6xHMAEyG9daMWLUQouqrpLV4TVd"
 # Example Tickers
 TICKERS = ["AAPL", "TSLA", "SPY"]
 
-# Example start/end dates
+# Example start date
 START_DATE = "2023-01-01"
-END_DATE = "2023-12-31"
+# Use current date as end date
+END_DATE = datetime.now().strftime("%Y-%m-%d")
 TIMEFRAME = "day"
 
 def fetch_historical_data(ticker: str) -> pd.DataFrame:
