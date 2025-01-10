@@ -5,13 +5,13 @@ from polygon import RESTClient
 from datetime import datetime
 
 # Hardcode your Polygon API key here
-HARDCODED_POLYGON_API_KEY = "fDLhW6xHMAEyG9daMWLUQouqrpLV4TVd"
+HARDCODED_POLYGON_API_KEY = ""
 
 # Example Tickers
 TICKERS = ["AAPL", "TSLA", "SPY"]
 
 # Example start date
-START_DATE = "2023-01-01"
+START_DATE = "2024-01-01"
 # Use current date as end date
 END_DATE = datetime.now().strftime("%Y-%m-%d")
 TIMEFRAME = "day"

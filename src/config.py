@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Polygon API key
-POLYGON_API_KEY = os.getenv("fDLhW6xHMAEyG9daMWLUQouqrpLV4TVd")
+POLYGON_API_KEY = os.getenv("")
 
 # OpenAI API key
 OPENAI_API_KEY = os.getenv("")
