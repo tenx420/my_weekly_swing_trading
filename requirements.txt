@@ -6,3 +6,4 @@ polygon-api-client==1.14.2
 openai==0.27.2
 python-dotenv==1.0.0
 openpyxl
+matplotlib
