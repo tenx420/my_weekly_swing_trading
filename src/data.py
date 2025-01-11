@@ -1,14 +1,9 @@
-# src/data.py
 import os
 import pandas as pd
 from polygon import RESTClient
 from datetime import datetime
+from src.config import TICKERS, POLYGON_API_KEY
 
-# Hardcode your Polygon API key here
-HARDCODED_POLYGON_API_KEY = ""
-
-# Example Tickers
-TICKERS = ["AAPL", "TSLA", "SPY"]
 
 # Example start date
 START_DATE = "2024-01-01"
@@ -22,7 +17,7 @@ def fetch_historical_data(ticker: str) -> pd.DataFrame:
     Returns a DataFrame with columns: [timestamp, open, high, low, close, volume].
     """
     # Pass the hardcoded key directly to the RESTClient constructor
-    client = RESTClient(api_key=HARDCODED_POLYGON_API_KEY)
+    client = RESTClient(api_key=POLYGON_API_KEY)
     
     all_bars = []
     bars = client.list_aggs(
@@ -49,8 +44,10 @@ def fetch_historical_data(ticker: str) -> pd.DataFrame:
     df.reset_index(drop=True, inplace=True)
     return df
 
-def download_all_data(output_dir: str = "data/raw") -> None:
-    """Download historical data for all tickers and save as CSV."""
+def download_all_data(output_dir: str):
+    """
+    Download historical data for all tickers and save as CSV files.
+    """
     os.makedirs(output_dir, exist_ok=True)
     
     for ticker in TICKERS:
