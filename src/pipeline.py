@@ -1,112 +1,87 @@
-import os
-import pickle
+# src/pipeline.py
+
 import pandas as pd
 from datetime import datetime
-import matplotlib.pyplot as plt
-import subprocess
+from src.config import Config
+from src.data import fetch_daily_data, save_raw_data, daily_to_weekly
+from src.features import add_technical_indicators, label_data_future_based, save_processed_data
+from src.model import train_xgb_model, load_xgb_model, predict_next_week
 
-from src.data import download_all_data
-from src.features import build_weekly_features
-from src.model import train_model, predict_with_confidence
-from src.config import TICKERS
-
-# For convenience, define your label_map_inv (or store in config)
-LABEL_MAP_INV = {0: "Bullish", 1: "Bearish", 2: "Consolidation"}
-
-def plot_predictions(df, ticker, predictions, output_dir="charts"):
+def run_pipeline_for_symbol(
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    train_new_model: bool = True
+):
     """
-    Plot the current week and next week predictions.
+    1) Fetch daily data for 'symbol' from start_date->end_date
+    2) Resample daily->weekly
+    3) Compute weekly indicators
+    4) Label each bar with future-based approach
+    5) Train or load model
+    6) Predict next week
+    Return a dict with final prediction details (no console printing).
     """
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    
-    plt.figure(figsize=(10, 6))
-    plt.plot(df["timestamp"], df["close"], label="Close Price")
-    
-    # Highlight the current week
-    current_week = df.iloc[-5:]
-    plt.plot(current_week["timestamp"], current_week["close"], label="Current Week", color="orange")
-    
-    # Add prediction for next week
-    next_week_date = current_week["timestamp"].iloc[-1] + pd.Timedelta(days=7)
-    plt.axvline(next_week_date, color="red", linestyle="--", label="Next Week Prediction")
-    plt.text(next_week_date, df["close"].iloc[-1], predictions, color="red")
-    
-    plt.title(f"{ticker} - Current Week and Next Week Prediction")
-    plt.xlabel("Date")
-    plt.ylabel("Close Price")
-    plt.legend()
-    plt.grid(True)
-    
-    plt.savefig(os.path.join(output_dir, f"{ticker}_prediction.png"))
-    plt.close()
 
-def run_full_pipeline():
-    """
-    - Download data for each ticker
-    - Build weekly features (with 3-class label)
-    - Train a multi-class model
-    - Predict next week's label for each ticker WITH confidence
-    - Save predictions to CSV
-    - Plot current week and next week predictions
-    """
-    # 1) Download data
-    download_all_data(output_dir="data/raw")
+    # 1) Fetch daily data
+    df_daily = fetch_daily_data(symbol, start_date, end_date)
+    if df_daily.empty:
+        return {
+            "symbol": symbol,
+            "message": "No daily data returned",
+            "prediction": None
+        }
 
-    # 2) Combine all tickers into a single DataFrame with weekly features
-    all_weekly_df = []
-    for file in os.listdir("data/raw"):
-        if file.endswith(".csv"):
-            path = os.path.join("data/raw", file)
-            df_daily = pd.read_csv(path)
-            df_daily["timestamp"] = pd.to_datetime(df_daily["timestamp"])
-            
-            # Build weekly features -> includes create_labels
-            weekly_df = build_weekly_features(df_daily)
-            
-            # Parse ticker from filename, e.g. "AAPL_2023-01-01_to_2023-12-31.csv" => "AAPL"
-            ticker = file.split("_")[0]
-            weekly_df["ticker"] = ticker
-            
-            all_weekly_df.append(weekly_df)
-    
-    combined_df = pd.concat(all_weekly_df, ignore_index=True)
-    combined_df.to_csv("data/processed/weekly_features.csv", index=False)
-    print("Weekly features saved to data/processed/weekly_features.csv")
+    # Optional: save daily raw
+    daily_filename = f"{symbol}_daily_raw.csv"
+    save_raw_data(df_daily, daily_filename)
 
-    # 3) Train the model on combined data
-    model = train_model(combined_df, model_path="xgb_model.pkl")
+    # 2) daily->weekly
+    df_weekly = daily_to_weekly(df_daily)
+    if df_weekly.empty:
+        return {
+            "symbol": symbol,
+            "message": "No weekly data after resampling",
+            "prediction": None
+        }
+    weekly_filename = f"{symbol}_weekly_raw.csv"
+    save_raw_data(df_weekly, weekly_filename)
 
-    # 4) Load the saved model & generate predictions for each ticker
-    with open("xgb_model.pkl", "rb") as f:
-        model = pickle.load(f)
+    # 3) Add indicators
+    df_feat = add_technical_indicators(df_weekly)
 
-    # The columns we used for training
-    feature_cols = ["sma_5", "rsi_14", "weekly_return", "volume"]
-    
-    predictions_list = []
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # 4) Label (future-based)
+    df_labeled = label_data_future_based(df_feat.copy())
+    if df_labeled.empty:
+        return {
+            "symbol": symbol,
+            "message": "No labeled rows",
+            "prediction": None
+        }
+    save_processed_data(df_labeled, symbol)
 
-    # Predict next week label & confidence for each ticker
-    for ticker in combined_df["ticker"].unique():
-        df_ticker = combined_df[combined_df["ticker"] == ticker]
-        # Get the last row's features
-        latest_X = df_ticker[feature_cols].iloc[[-1]]  # DataFrame with 1 row
+    # 5) Train or load
+    if train_new_model:
+        model = train_xgb_model(df_labeled, verbose=False)  # silent
+    else:
+        model = load_xgb_model()
 
-        pred_label, conf_label = predict_with_confidence(model, latest_X, LABEL_MAP_INV)
+    # 6) Predict
+    results = predict_next_week(df_labeled, model=model)
+    # e.g. { 'prediction': 'Bearish', 'confidence_level': 'High', 'probabilities': [0.8, 0.2] }
 
-        predictions_list.append({
-            "timestamp": now_str,
-            "ticker": ticker,
-            "predicted_label": pred_label,
-            "confidence": conf_label  # e.g. "High-Confidence Bullish"
-        })
+    # last labeled bar date
+    last_label_date = df_labeled["timestamp"].iloc[-1]
+    next_week_start = last_label_date + pd.Timedelta(days=7)
+    next_week_end   = next_week_start + pd.Timedelta(days=4)
 
-        # Plot current week and next week predictions
-        plot_predictions(df_ticker, ticker, conf_label)
-
-    # 5) Save predictions to a CSV
-    predictions_df = pd.DataFrame(predictions_list)
-    predictions_path = "data/processed/next_week_predictions.csv"
-    predictions_df.to_csv(predictions_path, index=False)
-    print(f"Predictions (with confidence) saved to {predictions_path}")
+    # Return a dictionary summarizing the final
+    return {
+        "symbol": symbol,
+        "last_labeled_date": str(last_label_date.date()),
+        "predicting_week_start": str(next_week_start.date()),
+        "predicting_week_end": str(next_week_end.date()),
+        "prediction": results["prediction"],
+        "confidence_level": results["confidence_level"],
+        "probabilities": results["probabilities"]
+    }

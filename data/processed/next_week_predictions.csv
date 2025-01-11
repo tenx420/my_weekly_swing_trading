@@ -1,4 +1,0 @@
-timestamp,ticker,predicted_label,confidence
-2025-01-09 00:20:56,AAPL,Consolidation,High-Confidence Consolidation
-2025-01-09 00:20:56,SPY,Consolidation,High-Confidence Consolidation
-2025-01-09 00:20:56,TSLA,Bullish,High-Confidence Bullish

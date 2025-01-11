@@ -1,74 +1,81 @@
-import pickle
+# src/model.py
+
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from xgboost import XGBClassifier
 import numpy as np
+import xgboost as xgb
+import joblib
 
-def train_model(df, model_path="xgb_model.pkl"):
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.metrics import classification_report
+from src.config import Config
+
+def prepare_xy(df: pd.DataFrame):
     """
-    Train a 3-class model (Bullish / Bearish / Consolidation).
+    Return X,y for training. 'label_id' is 0 for Bearish, 1 for Bullish.
     """
-    # Updated feature columns
-    feature_cols = ["sma_5", "rsi_14", "weekly_return", "volume"]
-    X = df[feature_cols]
-    y = df["label"]  # This is 'Bullish'/'Bearish'/'Consolidation'
+    df["label_id"] = df["label"].map(Config.LABEL_MAP)
+    X = df[Config.FEATURE_COLS].values
+    y = df["label_id"].values
+    return X, y
 
-    # Map labels to numeric
-    label_map = {"Bullish": 0, "Bearish": 1, "Consolidation": 2}
-    y_encoded = y.map(label_map)
-
-    # Time-based train/test split (shuffle=False)
+def train_xgb_model(df: pd.DataFrame, verbose=True):
+    X, y = prepare_xy(df)
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y_encoded, test_size=0.2, shuffle=False
+        X, y, test_size=0.2, shuffle=False
     )
 
-    # XGBoost multi-class classification
-    model = XGBClassifier(eval_metric="mlogloss")  # omit use_label_encoder
-    model.fit(X_train, y_train)
+    xgb_model = xgb.XGBClassifier(use_label_encoder=False, eval_metric="mlogloss")
 
-    train_acc = model.score(X_train, y_train)
-    test_acc = model.score(X_test, y_test)
-    print(f"Train Accuracy: {train_acc:.3f}")
-    print(f"Test Accuracy: {test_acc:.3f}")
+    grid = GridSearchCV(
+        estimator=xgb_model,
+        param_grid=Config.XGB_PARAM_GRID,
+        scoring="accuracy",
+        cv=3,
+        n_jobs=-1,
+        verbose=(1 if verbose else 0)
+    )
+    grid.fit(X_train, y_train)
 
-    # Save model
-    with open(model_path, "wb") as f:
-        pickle.dump(model, f)
-    print(f"Model saved to {model_path}")
+    best_model = grid.best_estimator_
 
-    return model
+    if verbose:
+        print("Best Params:", grid.best_params_)
+        y_pred = best_model.predict(X_test)
+        print("Classification Report (Test Data):")
+        print(classification_report(y_test, y_pred, target_names=Config.LABEL_MAP.keys()))
 
-def predict_next_week(model, df):
+    joblib.dump(best_model, Config.MODEL_PATH)
+    if verbose:
+        print(f"Model saved to {Config.MODEL_PATH}")
+    return best_model
+
+def load_xgb_model():
+    return joblib.load(Config.MODEL_PATH)
+
+def predict_next_week(df: pd.DataFrame, model=None):
     """
-    Predict next week's label (Bullish / Bearish / Consolidation)
-    for the last row in df.
+    Predict if *next week* is Bullish or Bearish, using the last row of features.
     """
-    feature_cols = ["sma_5", "rsi_14", "weekly_return", "volume"]
-    label_map_inv = {0: "Bullish", 1: "Bearish", 2: "Consolidation"}
+    if model is None:
+        model = load_xgb_model()
 
-    latest_data = df.iloc[[-1]]  # last row as DataFrame
-    X_latest = latest_data[feature_cols]
+    X, _ = prepare_xy(df)
+    X_last = X[-1, :].reshape(1, -1)
 
-    y_pred = model.predict(X_latest)[0]  # numeric label
-    return label_map_inv[y_pred]
+    probs = model.predict_proba(X_last)[0]
+    pred_idx = np.argmax(probs)
+    pred_label = Config.INV_LABEL_MAP[pred_idx]
 
-
-def predict_with_confidence(model, X_latest, label_map_inv):
-    """
-    Predict with confidence for the given data.
-    """
-    probs = model.predict_proba(X_latest)[0]  
-    predicted_idx = np.argmax(probs)          
-    predicted_label = label_map_inv[predicted_idx]
-    
-    confidence = probs[predicted_idx]         
-
-    if confidence > 0.70:
-        confidence_label = f"High-Confidence {predicted_label}"
-    elif confidence > 0.50:
-        confidence_label = f"Moderate-Confidence {predicted_label}"
+    confidence = probs[pred_idx]
+    if confidence >= Config.CONF_HIGH:
+        conf_level = "High"
+    elif confidence >= Config.CONF_MEDIUM:
+        conf_level = "Medium"
     else:
-        confidence_label = f"Low-Confidence {predicted_label}"
+        conf_level = "Low"
 
-    return predicted_label, confidence_label
-
+    return {
+        "prediction": pred_label,
+        "confidence_level": conf_level,
+        "probabilities": probs.tolist()
+    }

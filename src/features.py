@@ -1,86 +1,57 @@
+# src/features.py
+
 import pandas as pd
 import numpy as np
+import pandas_ta as ta
+from src.config import Config
 
-def compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def add_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Add common technical indicators to the DataFrame (like moving averages, RSI, etc.).
-    Assumes df has columns: [timestamp, open, high, low, close, volume].
+    On the weekly DataFrame, compute RSI(14), SMA(5), SMA(8).
     """
-    df = df.copy()
-    
-    # Example: 5-day simple moving average
-    df['sma_5'] = df['close'].rolling(window=5).mean()
-    
-    # Example: 14-day RSI (very rough example)
-    delta = df['close'].diff()
-    gain = np.where(delta > 0, delta, 0)
-    loss = np.where(delta < 0, -delta, 0)
-    avg_gain = pd.Series(gain).rolling(window=14).mean()
-    avg_loss = pd.Series(loss).rolling(window=14).mean()
-    rs = avg_gain / (avg_loss + 1e-9)
-    df['rsi_14'] = 100 - (100 / (1 + rs))
-    
+    df["rsi_14"] = ta.rsi(df["close"], length=14)
+    df["sma_5"] = df["close"].rolling(5).mean()
+    df["sma_8"] = df["close"].rolling(8).mean()
+
+    df.fillna(method="ffill", inplace=True)
+    df.fillna(method="bfill", inplace=True)
     return df
 
-def resample_to_weekly(df: pd.DataFrame) -> pd.DataFrame:
+def label_data_future_based(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Convert daily data to weekly data (open of Monday, close of Friday, etc.).
-    We'll label the weekly bar by the Monday open and Friday close.
+    Future-based labeling:
+    row i is Bullish if close[i+1] > close[i], else Bearish.
     """
-    df = df.set_index('timestamp')
-    weekly = df.resample('W-FRI').agg({
-        'open': 'first',
-        'high': 'max',
-        'low': 'min',
-        'close': 'last',
-        'volume': 'sum',
-        'sma_5': 'last',
-        'rsi_14': 'last'
-    })
-    
-    # Calculate weekly return
-    weekly['weekly_return'] = (weekly['close'] - weekly['open']) / weekly['open']
-    
-    weekly.reset_index(inplace=True)
-    weekly.dropna(inplace=True)
-    return weekly
+    df["next_close"] = df["close"].shift(-1)
 
-def create_labels(df, up_threshold=0.01, down_threshold=-0.01):
-    """
-    Create 3-class labels based on next week's percentage change.
-    up_threshold: +1%
-    down_threshold: -1%
-    
-    Classes:
-      - Bullish:       next week's close >= current close * (1 + up_threshold)
-      - Bearish:       next week's close <= current close * (1 + down_threshold)
-      - Consolidation: otherwise
-    """
-    df = df.copy()
+    labels = []
+    for i in range(len(df)):
+        if i == len(df) - 1:
+            # last row has no "next week" => label is NaN
+            labels.append(np.nan)
+            continue
+        curr_close = df.loc[i, "close"]
+        nxt_close = df.loc[i, "next_close"]
+        if nxt_close > curr_close:
+            labels.append("Bullish")
+        else:
+            labels.append("Bearish")
 
-    # Shift close by -1 to get next week's close
-    df["next_week_close"] = df["close"].shift(-1)
+    df["label"] = labels
+    df.dropna(subset=["label"], inplace=True)
+    df.reset_index(drop=True, inplace=True)
 
-    # Calculate weekly return
-    df["weekly_return"] = (df["next_week_close"] - df["close"]) / df["close"]
-
-    # Label logic
-    conditions = [
-        (df["weekly_return"] >= up_threshold),
-        (df["weekly_return"] <= down_threshold)
-    ]
-    choices = ["Bullish", "Bearish"]
-    df["label"] = np.select(conditions, choices, default="Consolidation")
-
-    # Drop the last row if it has no next_week_close
-    df.dropna(subset=["next_week_close"], inplace=True)
+    # Optionally remove next_close if you don't need it in final data
+    df.drop(columns=["next_close"], inplace=True)
     return df
 
-def build_weekly_features(df: pd.DataFrame) -> pd.DataFrame:
+def save_processed_data(df: pd.DataFrame, symbol: str) -> None:
     """
-    End-to-end feature engineering: apply technicals, resample to weekly, create labels.
+    Save final weekly (with features + labels) to CSV in data/processed/.
     """
-    daily_with_inds = compute_technical_indicators(df)
-    weekly_df = resample_to_weekly(daily_with_inds)
-    labeled_df = create_labels(weekly_df)
-    return labeled_df
+    import os
+    os.makedirs(Config.DATA_PROCESSED_PATH, exist_ok=True)
+    filename = f"{Config.DATA_PROCESSED_PATH}/{symbol}_weekly_processed.csv"
+    df.to_csv(filename, index=False)
+    print(f"Saved processed data to {filename}")
+

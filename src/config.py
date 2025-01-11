@@ -1,21 +1,31 @@
-import os
-from datetime import datetime
-from dotenv import load_dotenv
+# src/config.py
 
-# Load secrets from .env file
-load_dotenv()
+class Config:
+    POLYGON_API_KEY = ""
 
-# Polygon API key
-POLYGON_API_KEY = "POLYGON_API_KEY"
+    DATA_RAW_PATH = "data/raw"
+    DATA_PROCESSED_PATH = "data/processed"
+    MODEL_PATH = "xgb_model.pkl"
 
-# OpenAI API key
-OPENAI_API_KEY = ""
+    # Tickers we want to run
+    TICKERS = ["AAPL", "MSFT", "TSLA"]  # or any list of symbols
 
-# Example ticker list
-TICKERS = ["AAPL", "TSLA", "SPY", "HD", "MSFT", "AMZN", "GOOGL", "NFLX", "META", "NVDA", "QQQ", "IWM", "DIA", "GLD", "SLV", "BTC"]
-# Example start/end dates for historical data
-START_DATE = "2023-01-01"
-END_DATE = datetime.now().strftime("%Y-%m-%d")
+    LABEL_MAP = {"Bearish": 0, "Bullish": 1}
+    INV_LABEL_MAP = {0: "Bearish", 1: "Bullish"}
 
-# Other config constants
-TIMEFRAME = "day"  # For daily bars from Polygon
+    FEATURE_COLS = [
+        "open", "high", "low", "close", "volume",
+        "rsi_14", "sma_5", "sma_8"
+    ]
+
+    XGB_PARAM_GRID = {
+        "n_estimators": [100],
+        "max_depth": [3],
+        "learning_rate": [0.1],
+        "subsample": [0.8],
+        "colsample_bytree": [0.8],
+        "random_state": [42]
+    }
+
+    CONF_HIGH = 0.7
+    CONF_MEDIUM = 0.5
