@@ -1,4 +1,3 @@
-# src/features.py
 import pandas as pd
 import numpy as np
 
@@ -8,13 +7,11 @@ def compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     Assumes df has columns: [timestamp, open, high, low, close, volume].
     """
     df = df.copy()
-    df['return_1d'] = df['close'].pct_change()
     
     # Example: 5-day simple moving average
     df['sma_5'] = df['close'].rolling(window=5).mean()
     
     # Example: 14-day RSI (very rough example)
-    # For a better RSI, you might want a more precise calculation
     delta = df['close'].diff()
     gain = np.where(delta > 0, delta, 0)
     loss = np.where(delta < 0, -delta, 0)
@@ -31,23 +28,22 @@ def resample_to_weekly(df: pd.DataFrame) -> pd.DataFrame:
     We'll label the weekly bar by the Monday open and Friday close.
     """
     df = df.set_index('timestamp')
-    # Resample to weekly using 'W-FRI' frequency
-    # open -> first, high -> max, low -> min, close -> last, volume -> sum
     weekly = df.resample('W-FRI').agg({
         'open': 'first',
         'high': 'max',
         'low': 'min',
         'close': 'last',
         'volume': 'sum',
-        'return_1d': 'sum',  # sum of daily returns as an approximation
         'sma_5': 'last',
         'rsi_14': 'last'
     })
+    
+    # Calculate weekly return
+    weekly['weekly_return'] = (weekly['close'] - weekly['open']) / weekly['open']
+    
     weekly.reset_index(inplace=True)
     weekly.dropna(inplace=True)
     return weekly
-
-import numpy as np
 
 def create_labels(df, up_threshold=0.01, down_threshold=-0.01):
     """
@@ -79,7 +75,6 @@ def create_labels(df, up_threshold=0.01, down_threshold=-0.01):
     # Drop the last row if it has no next_week_close
     df.dropna(subset=["next_week_close"], inplace=True)
     return df
-
 
 def build_weekly_features(df: pd.DataFrame) -> pd.DataFrame:
     """

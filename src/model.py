@@ -1,5 +1,3 @@
-# src/model.py
-
 import pickle
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -10,8 +8,8 @@ def train_model(df, model_path="xgb_model.pkl"):
     """
     Train a 3-class model (Bullish / Bearish / Consolidation).
     """
-    # Example feature columns
-    feature_cols = ["sma_5", "rsi_14", "return_1d", "volume"]  
+    # Updated feature columns
+    feature_cols = ["sma_5", "rsi_14", "weekly_return", "volume"]
     X = df[feature_cols]
     y = df["label"]  # This is 'Bullish'/'Bearish'/'Consolidation'
 
@@ -45,7 +43,7 @@ def predict_next_week(model, df):
     Predict next week's label (Bullish / Bearish / Consolidation)
     for the last row in df.
     """
-    feature_cols = ["sma_5", "rsi_14", "return_1d", "volume"]
+    feature_cols = ["sma_5", "rsi_14", "weekly_return", "volume"]
     label_map_inv = {0: "Bullish", 1: "Bearish", 2: "Consolidation"}
 
     latest_data = df.iloc[[-1]]  # last row as DataFrame
@@ -57,22 +55,14 @@ def predict_next_week(model, df):
 
 def predict_with_confidence(model, X_latest, label_map_inv):
     """
-    model: a trained 3-class classifier with .predict_proba
-    X_latest: DataFrame or array with a single row of features
-    label_map_inv: {0: "Bullish", 1: "Bearish", 2: "Consolidation"}
-    
-    Returns (predicted_label, confidence_label).
-    E.g.: ("Bullish", "High-Confidence Bullish")
+    Predict with confidence for the given data.
     """
-    # model.predict_proba -> array of shape (1, 3) for 3 classes
     probs = model.predict_proba(X_latest)[0]  
-    predicted_idx = np.argmax(probs)          # index of highest prob
+    predicted_idx = np.argmax(probs)          
     predicted_label = label_map_inv[predicted_idx]
     
-    confidence = probs[predicted_idx]         # probability of predicted class
+    confidence = probs[predicted_idx]         
 
-    # Simple thresholding
-    # > 70% => High, > 50% => Moderate, else Low
     if confidence > 0.70:
         confidence_label = f"High-Confidence {predicted_label}"
     elif confidence > 0.50:
@@ -81,3 +71,4 @@ def predict_with_confidence(model, X_latest, label_map_inv):
         confidence_label = f"Low-Confidence {predicted_label}"
 
     return predicted_label, confidence_label
+

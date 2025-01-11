@@ -82,7 +82,7 @@ def run_full_pipeline():
         model = pickle.load(f)
 
     # The columns we used for training
-    feature_cols = ["sma_5", "rsi_14", "return_1d", "volume"]
+    feature_cols = ["sma_5", "rsi_14", "weekly_return", "volume"]
     
     predictions_list = []
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
