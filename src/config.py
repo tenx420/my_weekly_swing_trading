@@ -8,7 +8,9 @@ class Config:
     MODEL_PATH = "xgb_model.pkl"
 
     # Tickers we want to run
-    TICKERS = ["AAPL", "MSFT", "TSLA"]  # or any list of symbols
+    TICKERS = ["GOOGL", "HD", "GLD", "META", "SLV", "AAPL", "AMZN", "BTC", "DIA", "IWM", "MSFT", "NFLX", "NVDA", "QQQ", "SPY", "TSLA", "DELL", "TSM", "RDDT", "DJT", "GME"]
+  
+
 
     LABEL_MAP = {"Bearish": 0, "Bullish": 1}
     INV_LABEL_MAP = {0: "Bearish", 1: "Bullish"}
