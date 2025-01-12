@@ -24,7 +24,7 @@ def train_xgb_model(df: pd.DataFrame, verbose=True):
         X, y, test_size=0.2, shuffle=False
     )
 
-    xgb_model = xgb.XGBClassifier(use_label_encoder=False, eval_metric="mlogloss")
+    xgb_model = xgb.XGBClassifier(eval_metric="mlogloss")
 
     grid = GridSearchCV(
         estimator=xgb_model,
